@@ -60,10 +60,25 @@ step "Pre-flight checks"
 [[ "$(id -u)" -eq 0 ]] || fail "must run as root inside the container (current: $(whoami))"
 [[ -d "$BUNDLE_DIR/scripts" ]] || fail "bundle scripts not found at $BUNDLE_DIR/scripts"
 [[ -d "$DISCOURSE_DIR" ]] || fail "discourse not found at $DISCOURSE_DIR (not in container?)"
-[[ -n "${ANTHROPIC_API_KEY:-}" ]] || fail "ANTHROPIC_API_KEY env var not set; export it before running"
 id discourse >/dev/null 2>&1 || fail "discourse user does not exist"
 id postgres >/dev/null 2>&1 || fail "postgres user does not exist"
 command -v curl >/dev/null 2>&1 || fail "curl not found in container"
+
+# API key resolution — env var preferred, fallback to file at $DISCOURSE_DIR/ckb/.anthropic_key.
+# Same precedence as classify_run.rb itself, so admin can pick either:
+#   - env var: export ANTHROPIC_API_KEY='sk-ant-...'  (not persistent across shell sessions)
+#   - file:    write key to /var/www/discourse/ckb/.anthropic_key  (persists, but on-disk)
+KEY_FILE="$DISCOURSE_DIR/ckb/.anthropic_key"
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  if [[ -f "$KEY_FILE" && -s "$KEY_FILE" ]]; then
+    ANTHROPIC_API_KEY=$(tr -d '[:space:]' < "$KEY_FILE")
+    export ANTHROPIC_API_KEY
+    yellow "NOTE  ANTHROPIC_API_KEY loaded from $KEY_FILE (env var was unset)"
+  else
+    fail "no API key — set ANTHROPIC_API_KEY env var, or write key to $KEY_FILE"
+  fi
+fi
+[[ -n "$ANTHROPIC_API_KEY" ]] || fail "API key is empty after resolution"
 
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 # LOG_DIR is created by root, but rails commands run as discourse will write

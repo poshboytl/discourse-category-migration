@@ -22,17 +22,34 @@ sudo cp -r ~/discourse-category-migration /var/discourse/shared/standalone/
 
 容器内 `/shared/discourse-category-migration/` 就是上面这个路径。
 
-## 2. 进容器 + export API key + 跑脚本
+## 2. 进容器 + 设 API key + 跑脚本
 
 ```bash
 # host: 进容器
 cd /var/discourse && sudo ./launcher enter app
+```
 
-# 容器（默认 root 身份）：export API key（从交互输入读，不进 history）
-read -rs ANTHROPIC_API_KEY     # 静默等待 → 粘贴 key → 回车
+容器进来后是 root。两种设 API key 的方式，**任选其一**：
+
+**方式 A — 环境变量**（不写盘，shell 关掉就消失，每次重跑要重设）：
+```bash
+read -rs ANTHROPIC_API_KEY     # 静默等待 → 粘 key → 回车
 export ANTHROPIC_API_KEY
+```
 
-# 跑迁移脚本
+**方式 B — 写文件**（持久，多次跑不用重设；迁移完手动 `rm` 清理）：
+```bash
+mkdir -p /var/www/discourse/ckb
+read -rs KEY_INPUT && echo "$KEY_INPUT" > /var/www/discourse/ckb/.anthropic_key && unset KEY_INPUT
+chmod 600 /var/www/discourse/ckb/.anthropic_key
+chown discourse:discourse /var/www/discourse/ckb/.anthropic_key
+```
+
+`migrate.sh` 优先用 env var；env 没设就读文件；都没有才报错。
+
+跑迁移：
+
+```bash
 bash /shared/discourse-category-migration/scripts/migrate.sh
 ```
 
