@@ -1,0 +1,6 @@
+*.tar.gz
+.DS_Store
+*.log
+*.swp
+.idea/
+.vscode/
