@@ -91,7 +91,9 @@ bash /shared/discourse-category-migration/scripts/migrate.sh
 
 ### 1. 浏览器冒烟测试
 
-打开 staging 域名，**用普通用户账号**登录（不是 admin），检查：
+⚠️ **必须用普通用户账号**（trust_level_0 ~ trust_level_4），**不是 admin**——admin 在 Discourse 里**绕过所有分类权限**，永远看得到 "+ New Topic" 按钮。Admin 视角看 Community Space 还能发帖**不是 bug**，是 Discourse 的预期行为。
+
+最简单：开**无痕/隐私窗口**（Private/Incognito），用普通用户登录，再做下面验证：
 
 - [ ] `/categories` 看到 8 个顶级（7 主题 + Archived + Staff）
 - [ ] 进 **Community Space** 顶级：右上角**没有** "+ New Topic" 按钮
