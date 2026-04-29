@@ -88,16 +88,25 @@ read -p "Type 'reset' to proceed, anything else to abort: " CONFIRM
 # ============================================================================
 step "1. Rolling back DB inside container"
 
-sudo docker exec "$CONTAINER_NAME" bash <<EOF
-set -e
+# `docker exec -i` is REQUIRED for the heredoc to be passed as stdin to bash inside
+# the container. Without -i, stdin is not connected and the heredoc is discarded —
+# bash starts with no input, exits immediately, returns 0, and the outer script
+# falsely thinks all the commands inside ran. This caused a real disaster on staging
+# where the rollback silently no-op'd while host-side cleanup deleted all backups.
+#
+# `set -o pipefail` is also REQUIRED so that pg_restore failures inside a pipeline
+# (e.g. `pg_restore | tail`) are caught. Without it, set -e only sees tail's exit
+# code, missing actual restore errors.
+sudo docker exec -i "$CONTAINER_NAME" bash <<EOF
+set -euo pipefail
 echo "  - terminating active connections..."
 sudo -u postgres psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$DB_NAME' AND pid <> pg_backend_pid();" >/dev/null
 echo "  - dropping database..."
 sudo -u postgres psql -d postgres -c "DROP DATABASE $DB_NAME;"
 echo "  - recreating database..."
 sudo -u postgres psql -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_OWNER;"
-echo "  - restoring from $CONTAINER_BACKUP..."
-sudo -u postgres pg_restore -d $DB_NAME -j 4 "$CONTAINER_BACKUP" 2>&1 | tail -5
+echo "  - restoring from $CONTAINER_BACKUP (this takes ~1 min, full output below)..."
+sudo -u postgres pg_restore -d $DB_NAME -j 4 "$CONTAINER_BACKUP"
 
 echo "  - cleaning deployed scripts..."
 rm -f /var/www/discourse/script/recategorize.rb \
@@ -110,14 +119,20 @@ rm -rf /var/www/discourse/ckb/
 
 echo "  - cleaning /tmp migration artifacts..."
 rm -rf /tmp/migration-*/
-rm -f /tmp/migration-logs-*.tar.gz /tmp/anthropic_ping.* 2>/dev/null
-rm -f /tmp/recat_*.log /tmp/extract.log /tmp/classify_*.log /tmp/migrate_*.log 2>/dev/null
+rm -f /tmp/migration-logs-*.tar.gz /tmp/anthropic_ping.* 2>/dev/null || true
+rm -f /tmp/recat_*.log /tmp/extract.log /tmp/classify_*.log /tmp/migrate_*.log 2>/dev/null || true
 
 echo "  - clearing root bash history..."
 > /root/.bash_history
 
 echo "  done inside container"
 EOF
+
+# Sanity check: did the heredoc actually run? Verify the deployed scripts are gone.
+# This catches the docker-exec-without-stdin failure mode we hit earlier.
+if sudo docker exec "$CONTAINER_NAME" test -f /var/www/discourse/script/recategorize.rb; then
+  fail "rollback heredoc did NOT run — deployed scripts still present. Aborting before host cleanup destroys backups."
+fi
 
 green "OK  DB rolled back, container artifacts cleaned"
 
