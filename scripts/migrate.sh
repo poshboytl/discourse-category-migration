@@ -251,7 +251,10 @@ green "OK  $EXTRACT_COUNT topics extracted"
 step "7. Classify via Claude API (10-20 min, ~\$0.50)"
 
 CLASSIFY_LOG="$LOG_DIR/classify_run.log"
-: > "$CLASSIFY_LOG"  # truncate
+# Don't pre-truncate as root — that creates the file with root ownership, then
+# the discourse-side `>>` append below fails with permission denied. LOG_DIR is
+# already timestamped per-run, so the file won't exist yet; the first iteration's
+# `>>` creates it fresh, owned by discourse.
 
 for i in $(seq 1 $MAX_CLASSIFY_RETRIES); do
   echo "Classification attempt $i of $MAX_CLASSIFY_RETRIES (resume mode auto-skips already classified)..."
