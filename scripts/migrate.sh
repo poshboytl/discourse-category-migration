@@ -166,7 +166,8 @@ green "OK  backup at $BACKUP_FILE ($((SIZE_BYTES/1024/1024)) MB)"
 step "3. Dry-run recategorize (no DB changes)"
 
 DRYRUN_LOG="$LOG_DIR/recat_dryrun.log"
-run_as_discourse "bin/rails runner script/recategorize.rb --dry-run > $DRYRUN_LOG 2>&1"
+run_as_discourse "bin/rails runner script/recategorize.rb --dry-run > $DRYRUN_LOG 2>&1" \
+  || fail "dry-run failed — see $DRYRUN_LOG"
 
 ABORT_COUNT=$(grep -cE "^Aborting|MISS " "$DRYRUN_LOG" || true)
 [[ $ABORT_COUNT -eq 0 ]] || fail "dry-run has $ABORT_COUNT aborting/missing lines — see $DRYRUN_LOG"
@@ -307,9 +308,11 @@ ERROR_COUNT=$(grep -cE "^ERROR" "$MIGAPPLY_LOG" || true)
 
 AUDIT_FILE="$DISCOURSE_DIR/ckb/classify_migrate_audit.csv"
 AUDIT_LINES=$(wc -l < "$AUDIT_FILE" 2>/dev/null || echo 0)
-[[ $AUDIT_LINES -gt 1 ]] || fail "audit CSV missing or empty"
+# Header-only audit (1 line) is legitimate when classifier put everything in
+# stay_in_general — unusual but not a bug. Just check file exists with header.
+[[ $AUDIT_LINES -ge 1 ]] || fail "audit CSV missing or empty"
 
-green "OK  migrate applied (audit: $AUDIT_LINES rows incl header)"
+green "OK  migrate applied (audit: $AUDIT_LINES rows incl header, $((AUDIT_LINES - 1)) topics moved)"
 
 # ============================================================================
 # 10. Bundle logs
