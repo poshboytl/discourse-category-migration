@@ -13,11 +13,16 @@
 # the lock is fully working. Any "+ New Topic" the user sees in browser is
 # frontend cache (hard refresh fixes).
 
-username = ARGV[0]
-abort "Usage: bin/rails runner check_lock.rb <username>" if username.nil? || username.empty?
+identifier = ARGV[0]
+abort "Usage: bin/rails runner check_lock.rb <username_or_email>" if identifier.nil? || identifier.empty?
 
-u = User.find_by(username: username)
-abort "User '#{username}' not found" unless u
+# Accept either username or email
+u = User.find_by(username: identifier)
+unless u
+  ue = UserEmail.find_by(email: identifier.downcase)
+  u = ue&.user
+end
+abort "User not found by username or email: '#{identifier}'" unless u
 
 cs = Category.find_by(name: "Community Space", parent_category_id: nil)
 abort "Community Space category not found" unless cs
