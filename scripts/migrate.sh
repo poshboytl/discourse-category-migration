@@ -85,6 +85,12 @@ mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 # log files into it. chown so discourse can write.
 chown discourse:discourse "$LOG_DIR"
 
+# Same story for ckb/ — classify_extract.rb / classify_run.rb / classify_migrate.rb
+# all write CSV/JSONL files under $DISCOURSE_DIR/ckb. If admin created the dir as
+# root (per README step 3b), discourse can't write. Self-heal here.
+mkdir -p "$DISCOURSE_DIR/ckb"
+chown discourse:discourse "$DISCOURSE_DIR/ckb"
+
 green "OK  container detected, root user, bundle present"
 green "OK  ANTHROPIC_API_KEY set (len=${#ANTHROPIC_API_KEY}, prefix=${ANTHROPIC_API_KEY:0:12}...)"
 green "OK  log dir: $LOG_DIR"

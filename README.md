@@ -33,9 +33,12 @@
    **3b. 准备目录 + 静默读 key**（容器里跑）：
    ```bash
    mkdir -p /var/www/discourse/ckb
+   chown discourse:discourse /var/www/discourse/ckb
    read -rs KEY_INPUT
    ```
    回车后屏幕**静默等待**（看似挂住，正常）→ 粘 API key（不会回显）→ 回车。
+
+   ⚠️ `chown` 是 **目录本身**，不仅是 key 文件。`classify_extract.rb` 跑在 discourse 用户身份下、需要在 `ckb/` 写多个 csv/jsonl，目录没 chown 会导致 step 6 extract 失败。
 
    **3c. 写盘 + 收尾**（容器里跑）：
    ```bash
