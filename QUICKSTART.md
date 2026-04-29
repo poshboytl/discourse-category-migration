@@ -82,7 +82,29 @@ bash /shared/discourse-category-migration/scripts/migrate.sh
 - [ ] Community Space > Spark Program 子分类**有** "+ New Topic" 按钮
 - [ ] 老 Q&A 帖在 Archived 分类、状态 read-only
 
-## 4. 出问题就回滚
+## 4. Hand-off 给 dev review（重要）
+
+**不管成功还是失败**，admin 完成后都要：
+
+1. **回传 log bundle**：`/tmp/migration-logs-*.tar.gz`（脚本最后会打印路径）
+   ```bash
+   # 容器里
+   cp /tmp/migration-logs-*.tar.gz /shared/
+   exit
+   # host 上
+   scp talk-staging:/var/discourse/shared/standalone/migration-logs-*.tar.gz dev_user@dev_host:~/
+   ```
+2. **附上 smoke test 结果**：每条 ✓ / ✗
+3. **等 dev sign-off** 再做下一步（清备份、重启服务、宣布迁移完成）
+
+**如果中途 red FAIL**：
+
+- ❌ **不要**自己 retry
+- ❌ **不要**改 staging 上的脚本/数据
+- ✅ 立即把 log bundle + 失败截图发给 dev
+- ✅ 听 dev 安排（可能是修脚本、改数据、或回滚）
+
+## 5. 出问题就回滚
 
 ```bash
 bash /shared/discourse-category-migration/scripts/rollback.sh \
@@ -90,6 +112,16 @@ bash /shared/discourse-category-migration/scripts/rollback.sh \
 ```
 
 输入 `rollback` 确认，drops 当前 DB 并从备份恢复。完成后 `exit` 容器、`./launcher restart app`。
+
+## 6. 安全清理（成功后）
+
+```bash
+# 容器里：删 API key 文件
+rm /var/www/discourse/ckb/.anthropic_key
+
+# host 上：API key 在 console.anthropic.com revoke 掉
+# 备份保留至少 1 周，期间发现问题还能回滚
+```
 
 ---
 
