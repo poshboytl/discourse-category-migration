@@ -58,7 +58,21 @@
 
 ## 跑迁移
 
-进容器后（root 身份）一条命令：
+### Production 强烈建议先开 read-only mode
+
+迁移期间（30-60 分钟）如果有用户在某个**正在被搬走**的分类里发帖，新帖可能被遗留在 step 7 即将 destroy 的旧分类里 → 孤儿 topic。read-only 模式让用户能读不能写，规避 race。
+
+进容器后，跑迁移前先开 read-only：
+
+```bash
+sudo -u discourse env RAILS_ENV=production bash -c "cd /var/www/discourse && bin/rails runner 'Discourse.enable_readonly_mode'"
+```
+
+或者 admin UI `/admin` 顶部点 "Toggle read-only mode" 按钮。开启后页面会显示橙色 banner。
+
+**Staging 测试不必开**——没有真用户。
+
+### 跑
 
 ```bash
 bash /shared/discourse-category-migration/scripts/migrate.sh
@@ -88,6 +102,14 @@ bash /shared/discourse-category-migration/scripts/migrate.sh
 ---
 
 ## 完成后必做
+
+### 0. 关掉 read-only mode（如果 production 之前开了）
+
+```bash
+sudo -u discourse env RAILS_ENV=production bash -c "cd /var/www/discourse && bin/rails runner 'Discourse.disable_readonly_mode'"
+```
+
+或者 admin UI 再 toggle 一次。橙色 banner 消失，用户恢复正常发帖。
 
 ### 1. 浏览器冒烟测试
 
