@@ -37,31 +37,36 @@ puts "  moderator:    #{u.moderator}"
 puts "  trust_level:  #{u.trust_level}"
 puts "  groups:       #{u.groups.map(&:name).join(", ")}"
 
-puts ""
-puts "=== Guardian checks for Community Space (id=#{cs.id}) ==="
-puts "  can_see_category?           = #{g.can_see_category?(cs)}"
-puts "  can_create_topic_on_category? = #{g.can_create_topic_on_category?(cs)}"
+# Check parent + all subcategories
+all_categories = [cs] + Category.where(parent_category_id: cs.id).order(:id).to_a
 
-puts ""
-puts "=== category_groups rows (the actual lock) ==="
-rows = CategoryGroup.where(category_id: cs.id)
-if rows.empty?
-  puts "  (no rows — category is fully open to everyone, lock is NOT in place)"
-else
-  rows.each do |cg|
-    group_name = Group.find_by(id: cg.group_id)&.name
-    type_name =
-      case cg.permission_type
-      when 1
-        "full (see + reply + new topic)"
-      when 2
-        "create_post (see + reply, NO new topic)"
-      when 3
-        "readonly (see only)"
-      else
-        "unknown(#{cg.permission_type})"
-      end
-    puts "  group_id=#{cg.group_id} (#{group_name})  permission_type=#{cg.permission_type}  -> #{type_name}"
+all_categories.each do |cat|
+  label = cat.id == cs.id ? "Community Space (top-level)" : "Community Space > #{cat.name}"
+
+  puts ""
+  puts "=== #{label}  (id=#{cat.id}) ==="
+  puts "  can_see_category?            = #{g.can_see_category?(cat)}"
+  puts "  can_create_topic_on_category? = #{g.can_create_topic_on_category?(cat)}"
+
+  rows = CategoryGroup.where(category_id: cat.id)
+  if rows.empty?
+    puts "  category_groups: (no rows — category should be fully open)"
+  else
+    rows.each do |cg|
+      group_name = Group.find_by(id: cg.group_id)&.name
+      type_name =
+        case cg.permission_type
+        when 1
+          "full (see + reply + new topic)"
+        when 2
+          "create_post (see + reply, NO new topic)"
+        when 3
+          "readonly (see only)"
+        else
+          "unknown(#{cg.permission_type})"
+        end
+      puts "  category_groups: group_id=#{cg.group_id} (#{group_name})  permission_type=#{cg.permission_type}  -> #{type_name}"
+    end
   end
 end
 
@@ -74,17 +79,25 @@ expected_locked =
     permission_type: 2,
   ).exists?
 
+subcats = Category.where(parent_category_id: cs.id).order(:id).to_a
+subcat_create_results = subcats.map { |sc| [sc.name, g.can_create_topic_on_category?(sc)] }
+subcat_blocked = subcat_create_results.reject { |_, can| can }
+
 if !expected_locked
-  puts "  WARNING: 'everyone -> create_post' row is missing. Lock is NOT applied."
+  puts "  WARNING: 'everyone -> create_post' row missing on Community Space top-level. Lock NOT applied."
 elsif u.admin || u.moderator
   puts "  This user (#{u.username}) is admin/moderator — they bypass category permissions"
   puts "  and will always see '+ New Topic'. Use a non-admin user to verify the lock."
 elsif g.can_create_topic_on_category?(cs)
-  puts "  Lock is in DB but Guardian still allows topic creation — investigate further:"
-  puts "  - Is the user in any group with category-specific override?"
-  puts "  - Any plugin overriding permissions?"
-  puts "  - Try restarting Discourse to clear permission cache."
+  puts "  WARNING: Lock is in DB but Guardian still allows topic creation on parent. Investigate."
+elsif subcat_blocked.any?
+  puts "  Top-level locked correctly, but subcategories ALSO blocked for this user:"
+  subcat_blocked.each { |name, _| puts "    - #{name}" }
+  puts ""
+  puts "  This is Discourse's permission inheritance — when a parent has restricted"
+  puts "  permission_type, subcategories with no explicit category_groups can't grant"
+  puts "  MORE permission than the parent. To allow posting in subcategories, each"
+  puts "  subcategory needs its OWN category_groups row granting full (permission_type=1)."
 else
-  puts "  OK: Lock is working. User cannot create topics in Community Space top-level."
-  puts "  If browser still shows '+ New Topic', it's frontend cache — hard refresh."
+  puts "  OK: Top-level locked, subcategories accept posts. Frontend cache if button still shows on top-level."
 end
