@@ -20,20 +20,31 @@
    sudo cp -r ~/discourse-category-migration /var/discourse/shared/standalone/
    ```
 
-3. **Anthropic API key**（dev 通过加密渠道单独发，**不在 bundle 里**），写到容器内文件：
-   ```bash
-   # 进容器
-   cd /var/discourse && sudo ./launcher enter app
+3. **Anthropic API key**（dev 通过加密渠道单独发，**不在 bundle 里**），写到容器内文件。
 
-   # 容器里 root 身份：
+   ⚠️ 下面要**分三段粘贴**——`sudo ./launcher enter app` 会进入容器开新 shell，跟它后面的命令不能一起粘；`read -rs` 会把后续行吞为输入，跟它后面的命令也不能一起粘。
+
+   **3a. 进容器**（host 上跑）：
+   ```bash
+   cd /var/discourse && sudo ./launcher enter app
+   ```
+   等到 prompt 变成 `root@xxx-app:/var/www/discourse#`。
+
+   **3b. 准备目录 + 静默读 key**（容器里跑）：
+   ```bash
    mkdir -p /var/www/discourse/ckb
-   read -rs KEY_INPUT && echo "$KEY_INPUT" > /var/www/discourse/ckb/.anthropic_key && unset KEY_INPUT
+   read -rs KEY_INPUT
+   ```
+   回车后屏幕**静默等待**（看似挂住，正常）→ 粘 API key（不会回显）→ 回车。
+
+   **3c. 写盘 + 收尾**（容器里跑）：
+   ```bash
+   echo "$KEY_INPUT" > /var/www/discourse/ckb/.anthropic_key && unset KEY_INPUT
    chmod 600 /var/www/discourse/ckb/.anthropic_key
    chown discourse:discourse /var/www/discourse/ckb/.anthropic_key
    ```
-   （`read -rs` 静默等待 → 粘 key → 回车，整个 key 不进 bash history）
 
-   或用环境变量：`export ANTHROPIC_API_KEY='sk-ant-...'`（shell 关掉就消失，每次重跑要重设）
+   **替代方案**：用环境变量 `export ANTHROPIC_API_KEY='sk-ant-...'`——shell 关掉就消失，每次重跑要重设；但 key 会进 bash history。文件方式更适合反复测试。
 
 ---
 
