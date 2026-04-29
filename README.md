@@ -30,6 +30,11 @@
    ```
    等到 prompt 变成 `root@xxx-app:/var/www/discourse#`。
 
+   ⚠️ **进容器后立刻跑这一条**，否则之后从这份文档复制粘贴长命令时容易被 SSH 折行拆成多条命令报错：
+   ```bash
+   echo 'set enable-bracketed-paste on' >> ~/.inputrc && bind 'set enable-bracketed-paste on'
+   ```
+
    **3b. 准备目录 + 静默读 key**（容器里跑）：
    ```bash
    mkdir -p /var/www/discourse/ckb
