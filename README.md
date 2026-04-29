@@ -1,73 +1,136 @@
-# Discourse 分类重构迁移 Bundle
+# Discourse 分类重构迁移
 
-把按语言（中/英/西）划分的 Nervos Talk 旧分类压平成 7 个主题分类。
+把按语言（中/英/西）划分的 Nervos Talk 旧分类压平成 7 个主题分类（Development、Applications & Ecosystem、Announcements & Meta、Theory & Design、Miners Pub、Community Space、General）+ Archived。
 
-## 文件清单
+整条流水线由 `scripts/migrate.sh` 一站式跑完，**唯一一次需要人工介入是 apply 之前的 `Type 'yes' to proceed` 确认**。预计耗时 30-60 分钟，约 \$0.50 Claude API 成本，期间 staging 服务不需要停机。
 
+---
+
+## 前置条件
+
+1. **Bundle 在 staging host 上**（`git clone` 或解压 tarball）：
+   ```bash
+   cd ~
+   git clone https://github.com/poshboytl/discourse-category-migration.git
+   ```
+
+2. **Bundle 同步到 Discourse 容器看得见的路径**（`/shared/` 在容器里 = host 上 `/var/discourse/shared/standalone/`）：
+   ```bash
+   sudo rm -rf /var/discourse/shared/standalone/discourse-category-migration
+   sudo cp -r ~/discourse-category-migration /var/discourse/shared/standalone/
+   ```
+
+3. **Anthropic API key**（dev 通过加密渠道单独发，**不在 bundle 里**），写到容器内文件：
+   ```bash
+   # 进容器
+   cd /var/discourse && sudo ./launcher enter app
+
+   # 容器里 root 身份：
+   mkdir -p /var/www/discourse/ckb
+   read -rs KEY_INPUT && echo "$KEY_INPUT" > /var/www/discourse/ckb/.anthropic_key && unset KEY_INPUT
+   chmod 600 /var/www/discourse/ckb/.anthropic_key
+   chown discourse:discourse /var/www/discourse/ckb/.anthropic_key
+   ```
+   （`read -rs` 静默等待 → 粘 key → 回车，整个 key 不进 bash history）
+
+   或用环境变量：`export ANTHROPIC_API_KEY='sk-ant-...'`（shell 关掉就消失，每次重跑要重设）
+
+---
+
+## 跑迁移
+
+进容器后（root 身份）一条命令：
+
+```bash
+bash /shared/discourse-category-migration/scripts/migrate.sh
 ```
-.
-├── README.md             ← 本文件（先看）
-├── QUICKSTART.md         ← 一站式自动脚本（admin 主用这个）
-├── CHEATSHEET.md         ← 手动分步执行（要逐步控制时用）
-├── RUNBOOK.md            ← 详细原理 + 故障排查（出问题查这个）
-└── scripts/
-    ├── migrate.sh            ← 一站式迁移 wrapper
-    ├── rollback.sh           ← 回滚 wrapper
-    ├── recategorize.rb       ← Ruby: 主迁移
-    ├── classify_extract.rb   ← Ruby: 导出 General 活帖
-    ├── classify_run.rb       ← Ruby: 调 Claude API 分类
-    └── classify_migrate.rb   ← Ruby: 按分类结果搬帖
+
+脚本会跑：
+
+1. Pre-flight：检查 root/容器/bundle/API key 设置
+2. Step 0：调一次 `/v1/models` 验 API key 真的有效
+3. Step 1：部署 4 个 ruby 脚本到 `/var/www/discourse/script/`
+4. Step 2：备份 DB 到 `/shared/backups/pre_recategorize_TIMESTAMP.dump`
+5. Step 3：跑 `recategorize.rb --dry-run`，把 MOVE 计划列出来
+6. **⏸ 停下问 `Type 'yes' to proceed`**：你看一眼 MOVE 计划，输 `yes` 回车
+7. Step 4：apply recategorize（10-30 分钟，期间静默）
+8. Step 5：自检 Community Space lock 是否生效
+9. Step 6：提取 General 活帖给 LLM
+10. Step 7：classify_run（10-20 分钟，调 Claude API）
+11. Step 8：migrate dry-run（验证 classifier 输出）
+12. Step 9：apply migrate（搬最后一批）
+13. Step 10：把所有 log + audit CSV 打包成 `/tmp/migration-logs-TIMESTAMP.tar.gz`
+
+完成后会打印：
+- backup 文件路径（万一回滚用）
+- log bundle 路径（要发给 dev）
+- 浏览器冒烟测试 checklist
+
+---
+
+## 完成后必做
+
+### 1. 浏览器冒烟测试
+
+打开 staging 域名，**用普通用户账号**登录（不是 admin），检查：
+
+- [ ] `/categories` 看到 8 个顶级（7 主题 + Archived + Staff）
+- [ ] 进 **Community Space** 顶级：右上角**没有** "+ New Topic" 按钮
+- [ ] 进 **Community Space > Spark Program**：**有** "+ New Topic"
+- [ ] 进 **Community Space > CKB Community Fund DAO**：**有** "+ New Topic"
+- [ ] `/latest` 不显示 Archived 里的帖子
+- [ ] 老 Q&A 帖在 Archived 分类、状态 read-only
+
+### 2. 把 log bundle 发回 dev
+
+```bash
+# 容器里
+cp /tmp/migration-logs-*.tar.gz /shared/
+exit
+
+# host 上
+scp /var/discourse/shared/standalone/migration-logs-*.tar.gz dev_user@dev_host:~/
 ```
 
-## 给 Admin
+或任何渠道（邮件 / Slack / 网盘）。
 
-**直接看 `QUICKSTART.md`**——5 步流程，全程一条 `bash migrate.sh`，唯一确认在 apply 前。预计 30-60 分钟。
+**在 dev sign-off 之前不要清备份、不要重启服务、不要宣布迁移完成。**
 
-如果想**手动一步步控制**（在每一步之间可以暂停、看输出、决定是否继续），看 `CHEATSHEET.md`。
+### 3. 安全清理
 
-如果哪一步**报错或行为意外**，看 `RUNBOOK.md` 的故障排查段。
+迁移成功后：
 
-## API key
+```bash
+# 容器里
+rm /var/www/discourse/ckb/.anthropic_key
 
-不在 bundle 里。开发者通过加密渠道（1Password / Signal / Keybase）单独发给你。是 `sk-ant-api03-...` 开头的字符串。
+# 然后去 https://console.anthropic.com/settings/keys 把这个 key revoke
+```
 
-通过环境变量传给脚本，**不写入磁盘**——shell 关闭即销毁，迁移完无需手动清理。
+`/shared/backups/pre_recategorize_*.dump` 保留**至少 1 周**，期间如果发现问题还能回滚。一周后再清。
 
-## 总耗时
+---
 
-约 30-60 分钟（取决于 topic 量），其中：
+## 出错怎么办
 
-- 备份：30 秒-2 分钟
-- Apply recategorize：10-30 分钟
-- Classify（API 调用）：10-20 分钟，约 $0.50 成本
-- Apply migrate：1-3 分钟
-- 其他（dry-run、自检、打包 log）：< 5 分钟
+`migrate.sh` 任意一步**红色 FAIL**：
 
-期间 staging 服务**不需要停机**。
+- ❌ 不要自己 retry
+- ❌ 不要改 staging 上的脚本/数据
+- ✅ 把整段 terminal 输出 + log bundle 截图/打包发给 dev
+- ✅ 等 dev 答复
 
-## 回滚
-
-`migrate.sh` 第 2 步会自动备份。任何时候若发现迁移结果有问题：
+### 回滚到迁移前状态
 
 ```bash
 bash /shared/discourse-category-migration/scripts/rollback.sh \
   /shared/backups/pre_recategorize_<TIMESTAMP>.dump
 ```
 
-输入 `rollback` 确认即可。
+输入 `rollback` 确认。完成后 `exit` 容器，host 上 `cd /var/discourse && sudo ./launcher restart app`。
 
-## 改动了什么数据
+---
 
-- 重建 7 个顶级分类 + Archived
-- 移动约 2000 个 topic 到新分类
-- 删除约 27 个旧的源分类（按语言划分的）
-- 把 >2 年没活动的 topic 在指定分类里设为 archived（read-only）
-- 调整 sidebar 默认分类、muted 分类等 site setting
-- Community Space 顶级 lock 成 container-only（直接发帖被禁，子分类正常）
+## 高级用法：手动分步
 
-## 不改动什么
-
-- 不改 user 数据（无 user-level CategoryUser 行删除）
-- 不改 post 内容
-- 不删 topic（仅 archived/移动）
-- 不改 plugin 配置
+如果出于任何原因不能用 `migrate.sh` 一站式跑（比如要在每一步之间停下来人工检查），看 [STEP_BY_STEP.md](STEP_BY_STEP.md)——同一套逻辑拆成 13 步手动命令。
