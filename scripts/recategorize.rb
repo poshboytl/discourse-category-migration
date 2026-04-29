@@ -396,10 +396,12 @@ def lock_community_space_to_subcategories_only
     end
   end
 
-  # (b) Lock the parent: everyone -> create_post (no new topics, can still see/reply).
-  # CategoryGroup with permission_type=2 (create_post). Idempotent on rerun.
   everyone_group_id = Group::AUTO_GROUPS[:everyone] # 0
   create_post_level = CategoryGroup.permission_types[:create_post] # 2
+  full_level = CategoryGroup.permission_types[:full] # 1
+
+  # (b1) Lock the parent: everyone -> create_post (no new topics, can still see/reply).
+  # CategoryGroup with permission_type=2 (create_post). Idempotent on rerun.
   existing = CategoryGroup.find_by(category_id: cs.id, group_id: everyone_group_id)
   if existing && existing.permission_type == create_post_level
     puts "  SKIP   Community Space already locked (everyone -> create_post)"
@@ -416,6 +418,32 @@ def lock_community_space_to_subcategories_only
       )
     end
   end
+
+  # (b2) Subcategories need their OWN explicit category_groups. Discourse enforces
+  # permission inheritance — a subcategory cannot grant MORE permission than its
+  # parent unless it has an explicit row. Without this, the parent's `create_post`
+  # (no new topic) restriction cascades to subcategories, blocking exactly what
+  # we want to enable. Set `everyone -> full (1)` on each subcategory to override.
+  Category
+    .where(parent_category_id: cs.id)
+    .each do |sub|
+      sub_existing = CategoryGroup.find_by(category_id: sub.id, group_id: everyone_group_id)
+      if sub_existing && sub_existing.permission_type == full_level
+        puts "  SKIP   subcategory #{sub.name} already has everyone -> full"
+      elsif sub_existing
+        ex(
+          "update CategoryGroup for #{sub.name}: permission_type=#{sub_existing.permission_type} -> full(1)",
+        ) { sub_existing.update!(permission_type: full_level) }
+      else
+        ex("insert CategoryGroup row: #{sub.name} + everyone -> full(1)") do
+          CategoryGroup.create!(
+            category_id: sub.id,
+            group_id: everyone_group_id,
+            permission_type: full_level,
+          )
+        end
+      end
+    end
 end
 
 def tag_topics_with_language
