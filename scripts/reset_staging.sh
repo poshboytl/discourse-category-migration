@@ -106,7 +106,11 @@ sudo -u postgres psql -d postgres -c "DROP DATABASE $DB_NAME;"
 echo "  - recreating database..."
 sudo -u postgres psql -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_OWNER;"
 echo "  - restoring from $CONTAINER_BACKUP (this takes ~1 min, full output below)..."
-sudo -u postgres pg_restore -d $DB_NAME -j 4 "$CONTAINER_BACKUP"
+# --exit-on-error is REQUIRED. Without it, pg_restore prints "warning: errors ignored
+# on restore: N" and exits 0 even when unique indexes / constraints failed to create.
+# That looks like success to set -e, the heredoc proceeds, and the outer script then
+# deletes all backups in Phase 3 — leaving a corrupted DB with no recovery option.
+sudo -u postgres pg_restore --exit-on-error -d $DB_NAME -j 4 "$CONTAINER_BACKUP"
 
 echo "  - cleaning deployed scripts..."
 rm -f /var/www/discourse/script/recategorize.rb \
