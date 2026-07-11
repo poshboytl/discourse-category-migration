@@ -1,6 +1,6 @@
 # Discourse 分类重构迁移
 
-把按语言（中/英/西）划分的 Nervos Talk 旧分类压平成 7 个主题分类（Development、Applications & Ecosystem、Announcements & Meta、Theory & Design、Miners Pub、Community Space、General）+ Archived。
+把按语言（中/英/西）划分的 Nervos Talk 旧分类压平成 7 个主题分类（Announcements & Meta、Infrastructure、Applications & Ecosystem、Cryptoeconomics & Mechanism Design、Miners Pub、DAOs & Funding、General）+ Archived。Applications & Ecosystem 下带一个 User Support 子分类（用户求助专区）。
 
 整条流水线由 `scripts/migrate.sh` 一站式跑完，**唯一一次需要人工介入是 apply 之前的 `Type 'yes' to proceed` 确认**。预计耗时 30-60 分钟，约 \$0.50 Claude API 成本，期间 staging 服务不需要停机。
 
@@ -87,7 +87,7 @@ bash /shared/discourse-category-migration/scripts/migrate.sh
 5. Step 3：跑 `recategorize.rb --dry-run`，把 MOVE 计划列出来
 6. **⏸ 停下问 `Type 'yes' to proceed`**：你看一眼 MOVE 计划，输 `yes` 回车
 7. Step 4：apply recategorize（10-30 分钟，期间静默）
-8. Step 5：自检 Community Space lock 是否生效
+8. Step 5：自检 DAOs & Funding lock 和 User Support 子分类是否生效
 9. Step 6：提取 General 活帖给 LLM
 10. Step 7：classify_run（10-20 分钟，调 Claude API）
 11. Step 8：migrate dry-run（验证 classifier 输出）
@@ -113,14 +113,15 @@ sudo -u discourse env RAILS_ENV=production bash -c "cd /var/www/discourse && bin
 
 ### 1. 浏览器冒烟测试
 
-⚠️ **必须用普通用户账号**（trust_level_0 ~ trust_level_4），**不是 admin**——admin 在 Discourse 里**绕过所有分类权限**，永远看得到 "+ New Topic" 按钮。Admin 视角看 Community Space 还能发帖**不是 bug**，是 Discourse 的预期行为。
+⚠️ **必须用普通用户账号**（trust_level_0 ~ trust_level_4），**不是 admin**——admin 在 Discourse 里**绕过所有分类权限**，永远看得到 "+ New Topic" 按钮。Admin 视角看 DAOs & Funding 还能发帖**不是 bug**，是 Discourse 的预期行为。
 
 最简单：开**无痕/隐私窗口**（Private/Incognito），用普通用户登录，再做下面验证：
 
 - [ ] `/categories` 看到 8 个顶级（7 主题 + Archived + Staff）
-- [ ] 进 **Community Space** 顶级：右上角**没有** "+ New Topic" 按钮
-- [ ] 进 **Community Space > Spark Program**：**有** "+ New Topic"
-- [ ] 进 **Community Space > CKB Community Fund DAO**：**有** "+ New Topic"
+- [ ] 进 **DAOs & Funding** 顶级：右上角**没有** "+ New Topic" 按钮
+- [ ] 进 **DAOs & Funding > Spark Program**：**有** "+ New Topic"
+- [ ] 进 **DAOs & Funding > CKB Community Fund DAO**：**有** "+ New Topic"
+- [ ] 进 **Applications & Ecosystem > User Support**：存在且**有** "+ New Topic"
 - [ ] `/latest` 不显示 Archived 里的帖子
 - [ ] 老 Q&A 帖在 Archived 分类、状态 read-only
 

@@ -43,18 +43,18 @@ RESET_UNCATEGORIZED = ARGV.include?("--reset-uncategorized")
 
 NEW_TOP_LEVELS = [
   "Announcements & Meta",
-  "Development",
+  "Infrastructure",
   "Applications & Ecosystem",
-  "Theory & Design",
+  "Cryptoeconomics & Mechanism Design",
   "Miners Pub",
-  "Community Space",
+  "DAOs & Funding",
   "General",
   "Archived",
 ]
 
 # Target -> list of [parent_name_or_nil, source_name]. nil parent = top level.
 MOVES = {
-  "Development" => [
+  "Infrastructure" => [
     ["中文", "CKB 开发与技术讨论"],
     ["中文", "Layer 2 开发与技术讨论"],
     ["English", "CKB Development & Technical Discussion"],
@@ -72,7 +72,7 @@ MOVES = {
     ["Español", "Noticias y Anuncios"],
     [nil, "Nervos Talk Renewal & Governance"],
   ],
-  "Theory & Design" => [%w[中文 加密经济学], %w[Español CryptoEconomia]],
+  "Cryptoeconomics & Mechanism Design" => [%w[中文 加密经济学], %w[Español CryptoEconomia]],
   "Miners Pub" => [%w[中文 矿工酒馆], ["English", "Miners Pub"], %w[Español Mineria]],
   "General" => [
     %w[中文 分叉广场],
@@ -100,10 +100,10 @@ MOVES = {
 # topics land in dead storage AND are flagged read-only.
 ARCHIVE_SOURCES = [%w[English Q&A], %w[English Grants], %w[Español Grants]]
 
-# Existing top-level that should become child of Community Space.
-NEST_UNDER_COMMUNITY_SPACE = ["CKB Community Fund DAO"]
+# Existing top-level that should become child of DAOs & Funding.
+NEST_UNDER_DAOS_AND_FUNDING = ["CKB Community Fund DAO"]
 
-# Upgrade tag -> subcategory under Community Space; topics with this tag move in.
+# Upgrade tag -> subcategory under DAOs & Funding; topics with this tag move in.
 TAG_TO_SUBCATEGORY = { "Spark-Program" => "Spark Program" }
 
 # Every source we moved from should be deleted once empty. Subcategories first
@@ -129,6 +129,30 @@ RENAMES = [
       name: "General",
       slug: "general",
     },
+  },
+  # Old-bundle compatibility: a staging instance migrated by the pre-2026-07
+  # version of this script has these as top-level categories. Renaming in place
+  # (topics, children, and category_groups lock rows all follow the id) means a
+  # rerun upgrades cleanly instead of creating duplicate new-name categories.
+  # On a fresh production run none of these top-level names exist -> SKIP.
+  {
+    match: { name: "Development", parent_category_id: nil },
+    to: { name: "Infrastructure", slug: "infrastructure" },
+  },
+  {
+    match: { name: "Theory & Design", parent_category_id: nil },
+    to: { name: "Cryptoeconomics & Mechanism Design", slug: "cryptoeconomics-mechanism-design" },
+  },
+  {
+    match: { name: "Community Space", parent_category_id: nil },
+    to: { name: "DAOs & Funding", slug: "daos-funding" },
+  },
+  # Transitional name: the current staging was hand-renamed in the admin UI to
+  # "DAOs & Programs" (the scheme announced on the forum before the final
+  # "DAOs & Funding" decision). Converge it too.
+  {
+    match: { name: "DAOs & Programs", parent_category_id: nil },
+    to: { name: "DAOs & Funding", slug: "daos-funding" },
   },
 ]
 
@@ -279,8 +303,27 @@ def create_new_top_levels
   end
 end
 
+# Applications & Ecosystem stays an OPEN parent (builder discussions live directly
+# in it — unlike DAOs & Funding there is no parent lock). User Support is a plain
+# open subcategory: the named front door for usage/help topics (wallet won't sync,
+# seed phrase recovery, stuck transaction) now that the old Q&A category is
+# read-only inside Archived. No CategoryGroup rows needed; it inherits the open
+# parent. Misfiled support posts in the parent are expected and cheap to re-drag.
+def create_user_support_subcategory
+  header "1b. CREATE User Support subcategory under Applications & Ecosystem"
+  ae = @targets["Applications & Ecosystem"] || resolve(nil, "Applications & Ecosystem")
+  return puts("  SKIP   Applications & Ecosystem not available") unless ae
+
+  sub = resolve("Applications & Ecosystem", "User Support")
+  if sub
+    puts "  SKIP   User Support already exists (id=#{sub.id})"
+  else
+    find_or_create_category(name: "User Support", parent: ae)
+  end
+end
+
 def apply_category_colors
-  header "1b. COLOR  set category colors from palette (idempotent — only updates mismatches)"
+  header "1c. COLOR  set category colors from palette (idempotent — only updates mismatches)"
   CATEGORY_COLORS.each do |name, colors|
     cat = resolve(nil, name) || Category.find_by(name: name)
     unless cat
@@ -302,25 +345,25 @@ def apply_category_colors
 end
 
 def nest_community_fund_dao
-  header "2. NEST  CKB Community Fund DAO under Community Space"
+  header "2. NEST  CKB Community Fund DAO under DAOs & Funding"
   dao = resolve(nil, "CKB Community Fund DAO")
-  cs = @targets["Community Space"] || resolve(nil, "Community Space")
+  dp = @targets["DAOs & Funding"] || resolve(nil, "DAOs & Funding")
 
   return puts("  SKIP  DAO category not found") unless dao
-  return puts("  SKIP  Community Space not available") unless cs
+  return puts("  SKIP  DAOs & Funding not available") unless dp
 
-  if cs.is_a?(Category) && dao.parent_category_id == cs.id
-    return puts("  SKIP  DAO (id=#{dao.id}) already nested under Community Space (id=#{cs.id})")
+  if dp.is_a?(Category) && dao.parent_category_id == dp.id
+    return puts("  SKIP  DAO (id=#{dao.id}) already nested under DAOs & Funding (id=#{dp.id})")
   end
 
-  ex("set parent_category_id of DAO (id=#{dao.id}) -> Community Space (id=#{cs.id})") do
-    dao.update!(parent_category_id: cs.id)
+  ex("set parent_category_id of DAO (id=#{dao.id}) -> DAOs & Funding (id=#{dp.id})") do
+    dao.update!(parent_category_id: dp.id)
   end
 end
 
 def upgrade_tag_to_subcategory
-  header "4. UPGRADE tag -> subcategory under Community Space"
-  cs = @targets["Community Space"] || resolve(nil, "Community Space")
+  header "4. UPGRADE tag -> subcategory under DAOs & Funding"
+  dp = @targets["DAOs & Funding"] || resolve(nil, "DAOs & Funding")
   TAG_TO_SUBCATEGORY.each do |tag_name, sub_name|
     tag = Tag.find_by(name: tag_name)
     unless tag
@@ -328,11 +371,11 @@ def upgrade_tag_to_subcategory
       next
     end
 
-    sub = resolve("Community Space", sub_name)
+    sub = resolve("DAOs & Funding", sub_name)
     if sub
       puts "  SKIP   subcategory #{sub_name} already exists (id=#{sub.id})"
     else
-      sub = find_or_create_category(name: sub_name, parent: cs)
+      sub = find_or_create_category(name: sub_name, parent: dp)
     end
 
     moved = 0
@@ -349,33 +392,33 @@ def upgrade_tag_to_subcategory
   end
 end
 
-# Community Space is by design a CONTAINER for community-applied subcategories
+# DAOs & Funding is by design a CONTAINER for community-applied subcategories
 # (e.g. Spark Program, CKB Community Fund DAO). New top-level posts directly under
-# Community Space are not allowed — they should live in a subcategory.
+# DAOs & Funding are not allowed — they should live in a subcategory.
 #
 # Two enforcements applied here:
 #   (a) Move any existing direct top-level topics (excluding the auto description
-#       "About the Community Space category") to General. These typically arrive
-#       from classify_migrate.rb suggesting "Community Space" for community
+#       "About the DAOs & Funding category") to General. These typically arrive
+#       from classify_migrate.rb suggesting "DAOs & Funding" for community
 #       announcements / events / quarterly reports that don't have a clear
 #       subcategory home — those belong in General until a subcategory is created.
 #   (b) Add a CategoryGroup row: everyone (group_id=0) -> create_post (level 2).
-#       This blocks creation of new top-level topics in Community Space via UI/API
+#       This blocks creation of new top-level topics in DAOs & Funding via UI/API
 #       while leaving existing subcategories' permissions untouched (subcategory
 #       permissions are independent of parent in Discourse).
-def lock_community_space_to_subcategories_only
-  header "4b. LOCK Community Space top-level — container only (subcategories accept posts)"
-  cs = @targets["Community Space"] || resolve(nil, "Community Space")
-  if !cs || cs.is_a?(CategoryStub)
-    puts "  SKIP   Community Space unavailable (dry-run or not yet created)"
+def lock_daos_and_funding_to_subcategories_only
+  header "4b. LOCK DAOs & Funding top-level — container only (subcategories accept posts)"
+  dp = @targets["DAOs & Funding"] || resolve(nil, "DAOs & Funding")
+  if !dp || dp.is_a?(CategoryStub)
+    puts "  SKIP   DAOs & Funding unavailable (dry-run or not yet created)"
     return
   end
 
   general = @targets["General"] || resolve(nil, "General")
 
   # (a) Relocate any direct top-level topics to General, preserving the description topic.
-  desc_id = cs.topic_id
-  direct_scope = Topic.unscoped.where(category_id: cs.id)
+  desc_id = dp.topic_id
+  direct_scope = Topic.unscoped.where(category_id: dp.id)
   direct_scope = direct_scope.where.not(id: desc_id) if desc_id
   count = direct_scope.count
   if count.zero?
@@ -383,7 +426,7 @@ def lock_community_space_to_subcategories_only
   elsif !general || general.is_a?(CategoryStub)
     puts "  SKIP   General unavailable as relocation target"
   else
-    puts "  RELOC #{count} direct top-level topics: Community Space -> General"
+    puts "  RELOC #{count} direct top-level topics: DAOs & Funding -> General"
     direct_scope.find_each do |t|
       deleted_marker = t.deleted_at ? " [soft-deleted]" : ""
       ex("  topic #{t.id} -> General#{deleted_marker}") do
@@ -402,17 +445,17 @@ def lock_community_space_to_subcategories_only
 
   # (b1) Lock the parent: everyone -> create_post (no new topics, can still see/reply).
   # CategoryGroup with permission_type=2 (create_post). Idempotent on rerun.
-  existing = CategoryGroup.find_by(category_id: cs.id, group_id: everyone_group_id)
+  existing = CategoryGroup.find_by(category_id: dp.id, group_id: everyone_group_id)
   if existing && existing.permission_type == create_post_level
-    puts "  SKIP   Community Space already locked (everyone -> create_post)"
+    puts "  SKIP   DAOs & Funding already locked (everyone -> create_post)"
   elsif existing
     ex(
       "update CategoryGroup row: everyone -> create_post (was permission_type=#{existing.permission_type})",
     ) { existing.update!(permission_type: create_post_level) }
   else
-    ex("insert CategoryGroup row: Community Space + everyone -> create_post") do
+    ex("insert CategoryGroup row: DAOs & Funding + everyone -> create_post") do
       CategoryGroup.create!(
-        category_id: cs.id,
+        category_id: dp.id,
         group_id: everyone_group_id,
         permission_type: create_post_level,
       )
@@ -425,7 +468,7 @@ def lock_community_space_to_subcategories_only
   # (no new topic) restriction cascades to subcategories, blocking exactly what
   # we want to enable. Set `everyone -> full (1)` on each subcategory to override.
   Category
-    .where(parent_category_id: cs.id)
+    .where(parent_category_id: dp.id)
     .each do |sub|
       sub_existing = CategoryGroup.find_by(category_id: sub.id, group_id: everyone_group_id)
       if sub_existing && sub_existing.permission_type == full_level
@@ -726,25 +769,26 @@ end
 
 DEFAULT_SIDEBAR_CATEGORIES = [
   "Announcements & Meta",
-  "Development",
+  "Infrastructure",
   "Applications & Ecosystem",
-  "Theory & Design",
+  "Cryptoeconomics & Mechanism Design",
   "Miners Pub",
-  "Community Space",
+  "DAOs & Funding",
 ].freeze
 
 ARCHIVE_AGE_YEARS = 2
 # Step 10's age-archive operates ONLY on categories where old content has limited
-# reference value: chatter, news, events. Knowledge-base categories (Development,
-# Theory & Design, Applications & Ecosystem) are deliberately excluded — a 2-year-old
-# technical thread often retains value as someone may want to follow up or correct it.
+# reference value: chatter, news, events. Knowledge-base categories (Infrastructure,
+# Cryptoeconomics & Mechanism Design, Applications & Ecosystem) are deliberately
+# excluded — a 2-year-old technical thread often retains value as someone may want
+# to follow up or correct it.
 # Source categories that step 7 will delete (e.g. "News and Announcements") are also
 # included so their old residue gets archived before deletion takes their topics
 # along to the new home.
 ARCHIVE_AGE_INCLUDE_CATEGORY_NAMES = [
   "General",
   "Announcements & Meta",
-  "Community Space",
+  "DAOs & Funding",
   "Miners Pub",
   "Archived",
 ].freeze
@@ -754,7 +798,7 @@ CATEGORY_COLORS = {
     color: "BF1E2E",
     text_color: "FFFFFF",
   },
-  "Development" => {
+  "Infrastructure" => {
     color: "3498DB",
     text_color: "FFFFFF",
   },
@@ -762,7 +806,13 @@ CATEGORY_COLORS = {
     color: "2ECC71",
     text_color: "FFFFFF",
   },
-  "Theory & Design" => {
+  # Subcategory of Applications & Ecosystem — teal keeps it in the parent's
+  # green family while staying distinguishable in topic-list badges.
+  "User Support" => {
+    color: "16A085",
+    text_color: "FFFFFF",
+  },
+  "Cryptoeconomics & Mechanism Design" => {
     color: "9B59B6",
     text_color: "FFFFFF",
   },
@@ -770,7 +820,7 @@ CATEGORY_COLORS = {
     color: "8B4513",
     text_color: "FFFFFF",
   },
-  "Community Space" => {
+  "DAOs & Funding" => {
     color: "F39C12",
     text_color: "FFFFFF",
   },
@@ -782,6 +832,8 @@ CATEGORY_COLORS = {
     color: "E67E22",
     text_color: "FFFFFF",
   },
+  # Deliberately dark slate, not pure black — a #000-ish badge disappears against
+  # Discourse's dark theme background, same failure mode as pure white on light.
   "Archived" => {
     color: "34495E",
     text_color: "FFFFFF",
@@ -869,7 +921,7 @@ def archive_stale_topics
   header "10. ARCHIVE topics with no activity for #{ARCHIVE_AGE_YEARS}+ years"
   cutoff = ARCHIVE_AGE_YEARS.years.ago
 
-  # Resolve included categories (and their subcategories — e.g. Community Space's
+  # Resolve included categories (and their subcategories — e.g. DAOs & Funding's
   # children like Spark Program inherit the chatter/event semantics).
   parent_ids = ARCHIVE_AGE_INCLUDE_CATEGORY_NAMES.map { |n| resolve(nil, n)&.id }.compact
   if parent_ids.empty?
@@ -882,7 +934,7 @@ def archive_stale_topics
 
   resolved_names = Category.where(id: included_ids).order(:id).pluck(:name)
   puts "  SCOPE  archiving in: #{resolved_names.join(", ")}"
-  puts "  SCOPE  NOT archiving in: Development, Theory & Design, Applications & Ecosystem, Staff (knowledge-base content stays open for follow-ups)"
+  puts "  SCOPE  NOT archiving in: Infrastructure, Cryptoeconomics & Mechanism Design, Applications & Ecosystem, Staff (knowledge-base content stays open for follow-ups)"
 
   scope =
     Topic
@@ -934,11 +986,12 @@ preflight!
 validate_sources!
 rename_categories
 create_new_top_levels
+create_user_support_subcategory
 apply_category_colors
 nest_community_fund_dao
 tag_topics_with_language
 upgrade_tag_to_subcategory
-lock_community_space_to_subcategories_only
+lock_daos_and_funding_to_subcategories_only
 move_and_archive_topics
 migrate_uncat_stragglers_to_archived
 reset_uncategorized_to_default

@@ -46,20 +46,25 @@ MIN_CONFIDENCE =
   end
 
 VALID_TARGETS = [
-  "Development",
+  "Infrastructure",
   "Applications & Ecosystem",
+  "User Support",
   "Announcements & Meta",
-  "Theory & Design",
+  "Cryptoeconomics & Mechanism Design",
   "Miners Pub",
-  # NOTE: "Community Space" is intentionally NOT a valid migrate target. By design
-  # Community Space is a container for community-applied subcategories (Spark
+  # NOTE: "DAOs & Funding" is intentionally NOT a valid migrate target. By design
+  # DAOs & Funding is a container for community-applied subcategories (Spark
   # Program, CKB Community Fund DAO) — direct top-level posts are not allowed.
   # Spark Program and CKB Community Fund DAO content already gets routed via
   # tag-driven step 4 / NEST step 2 in recategorize.rb, so they never reach
-  # General. If the classifier suggests "Community Space" for a remaining General
+  # General. If the classifier suggests "DAOs & Funding" for a remaining General
   # topic, we want it to fall into the "invalid_category" branch (script logs +
   # leaves topic in General) rather than orphan as a direct top-level post.
 ].freeze
+
+# Targets that live as a subcategory rather than a top level: name -> parent name.
+# Anything not listed here resolves as a top-level category.
+SUBCATEGORY_PARENT = { "User Support" => "Applications & Ecosystem" }.freeze
 
 abort "Input CSV not found: #{IN_PATH}" unless File.exist?(IN_PATH)
 
@@ -94,7 +99,13 @@ abort "General category not found" unless general
 # Pre-resolve all valid target categories (and abort if any are missing).
 targets = {}
 VALID_TARGETS.each do |name|
-  cat = Category.find_by(name: name, parent_category_id: nil)
+  cat =
+    if (parent_name = SUBCATEGORY_PARENT[name])
+      parent = Category.find_by(name: parent_name, parent_category_id: nil)
+      parent && Category.find_by(name: name, parent_category_id: parent.id)
+    else
+      Category.find_by(name: name, parent_category_id: nil)
+    end
   abort "Target category not found: #{name}" unless cat
   targets[name] = cat
 end

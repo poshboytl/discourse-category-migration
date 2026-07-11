@@ -179,23 +179,29 @@ tail -3 /tmp/recat_apply.log
 
 ---
 
-## Step 5：自检 Community Space lock
+## Step 5：自检 DAOs & Funding lock + User Support
 
 对应 migrate.sh 的 `5. Verify post-apply state`。
 
 ```bash
 DISCOURSE_RUN 'bin/rails runner "
-cs = Category.find_by(name: %q(Community Space), parent_category_id: nil)
-abort %q(Community Space missing) unless cs
-cg = CategoryGroup.find_by(category_id: cs.id, group_id: 0)
-abort %q(Community Space not locked) unless cg && cg.permission_type == 2
-puts %q(OK: Community Space locked)
+dp = Category.find_by(name: %q(DAOs & Funding), parent_category_id: nil)
+abort %q(DAOs & Funding missing) unless dp
+cg = CategoryGroup.find_by(category_id: dp.id, group_id: 0)
+abort %q(DAOs & Funding not locked) unless cg && cg.permission_type == 2
+puts %q(OK: DAOs & Funding locked)
+ae = Category.find_by(name: %q(Applications & Ecosystem), parent_category_id: nil)
+abort %q(Applications & Ecosystem missing) unless ae
+us = Category.find_by(name: %q(User Support), parent_category_id: ae.id)
+abort %q(User Support subcategory missing) unless us
+puts %q(OK: User Support subcategory present)
 puts %q(Top-level categories: ) + Category.where(parent_category_id: nil).count.to_s
 "'
 ```
 
 **expect**：
-- `OK: Community Space locked`
+- `OK: DAOs & Funding locked`
+- `OK: User Support subcategory present`
 - `Top-level categories: 10`（约这个数量）
 
 ---

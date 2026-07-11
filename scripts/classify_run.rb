@@ -51,21 +51,26 @@ end
 RUBRIC = <<~PROMPT
   You are a classifier for Nervos Talk, a blockchain community forum with posts in English, Chinese (Simplified), and Spanish.
 
-  The forum has 6 topical buckets. For each topic you are given, pick EXACTLY ONE of:
+  The forum has 7 buckets. For each topic you are given, pick EXACTLY ONE of:
 
-    1. Development
+    1. Infrastructure
     2. Applications & Ecosystem
-    3. Announcements & Meta
-    4. Theory & Design
-    5. Miners Pub
-    6. stay_in_general   (the default when unsure)
+    3. User Support
+    4. Announcements & Meta
+    5. Cryptoeconomics & Mechanism Design
+    6. Miners Pub
+    7. stay_in_general   (the default when unsure)
 
-  NOTE: "Community Space" is a parent CONTAINER for community-applied subcategories
+  NOTE: "DAOs & Funding" is a parent CONTAINER for community-applied subcategories
   (e.g. Spark Program, CKB Community Fund DAO). It does NOT accept direct top-level
   posts. Spark Program / DAO content is auto-routed via tags and category nesting,
-  so it never reaches this classifier. Do NOT suggest "Community Space" — for
+  so it never reaches this classifier. Do NOT suggest "DAOs & Funding" — for
   community announcements / events / programs that lack a specific subcategory home,
   use stay_in_general (the operator will hand-triage them later).
+
+  NOTE: "User Support" is a subcategory (Applications & Ecosystem > User Support),
+  but you should still suggest it as a first-class answer — the migrate script
+  resolves it to the right subcategory.
 
   Output a single JSON object matching the provided schema. No prose before or after.
 
@@ -73,8 +78,15 @@ RUBRIC = <<~PROMPT
 
   ## Category Boundaries
 
-  ### 1. Development
-  Discussion of the CKB protocol, CKB-VM, Layer 2 protocols (Godwoken, Axon, Fiber), RFCs, consensus mechanisms at the implementation level, dev tooling, SDK internals, protocol-level proposals. "How the chain works / should work" rather than "how to use a product built on it".
+  The split between the first three categories is by LAYER and INTENT.
+  Infrastructure = the protocol and the tools made FOR builders (builders building
+  for other builders). Applications & Ecosystem = products built ON those tools
+  for end users (builders building for end users, plus ecosystem collaboration).
+  User Support = someone asking for help USING any of it — help-seeking intent
+  wins over subject matter.
+
+  ### 1. Infrastructure
+  The protocol layer and developer-facing tooling: the CKB protocol, CKB-VM, Layer 2 protocols (Godwoken, Axon, Fiber), RFCs, consensus mechanisms at the implementation level, dev tooling, SDKs (their design, internals, and releases), common scripts, debuggers, testing harnesses, protocol-level proposals. "How the chain works / should work" rather than "how to use a product built on it".
 
   Positive examples:
   - "RFC: Extensible ECDSA lock script"
@@ -82,29 +94,48 @@ RUBRIC = <<~PROMPT
   - "Proposal: change block interval to 12s"
   - "Light client sync protocol — edge cases with reorgs"
   - "Godwoken v1 state tree benchmarks"
+  - "CCC SDK v0.3 — breaking change for React hooks"
 
-  NOT Development:
-  - "My Portal Wallet won't connect to MetaMask" → Applications & Ecosystem
-  - "Tokenomics: is 1 CKB = 1 Byte optimal?" → Theory & Design
-  - "Spark Program grant for a wallet project" → stay_in_general (operator will triage to Community Space subcategory)
+  NOT Infrastructure:
+  - "My Portal Wallet won't connect to MetaMask" → User Support (help-seeking)
+  - "Design feedback on our dapp's cell-collection UX" → Applications & Ecosystem
+  - "Tokenomics: is 1 CKB = 1 Byte optimal?" → Cryptoeconomics & Mechanism Design
+  - "Spark Program grant for a wallet project" → stay_in_general (operator will triage to a DAOs & Funding subcategory)
 
   ### 2. Applications & Ecosystem
-  Specific end-user products built on CKB or adjacent: wallets (Neuron, Portal Wallet, JoyID, OneKey, ckbull), dapps, bridges, exchanges (listings, withdrawals), integrations, SDK usage for a specific product, infrastructure-operator questions (running a node, monitoring, deployment). Bug reports and feature requests for specific products go here. User-facing tutorials.
+  The application and ecosystem layer: design, development, and discussion of specific end-user products built on CKB or adjacent — wallets (Neuron, Portal Wallet, JoyID, OneKey, ckbull), dapps, bridges, exchanges (listings, launches), integrations — plus app showcases and announcements, cross-project collaboration, and infrastructure-operator topics (running a node, monitoring, deployment). Feature discussions and design critiques of specific products go here. Tutorials WRITTEN to teach others (as opposed to someone asking for help).
 
   Positive examples:
-  - "JoyID passkey recovery flow"
-  - "How do I set up a CKB mainnet node on Raspberry Pi?"
-  - "CCC SDK v0.3 — breaking change for React hooks"
-  - "Mexc exchange stuck withdrawal"
-  - "Portal Wallet MetaMask signing fails on Firefox"
+  - "JoyID passkey recovery flow" (product design discussion)
+  - "Tutorial: setting up a CKB mainnet node on Raspberry Pi"
+  - "Design feedback wanted: gasless UX for our CKB dapp"
   - "Announcing: NewDapp launches on CKB testnet"
+  - "Bridge integration: partnering with ForceBridge"
 
   NOT Applications & Ecosystem:
-  - "CKB-VM semantics of VM version 2" → Development
-  - "Should we add on-chain KYC?" → Theory & Design / stay_in_general
-  - "Spark grant announcement for wallet X" → stay_in_general (a grant announcement belongs in a Community Space subcategory; operator routes it post-classification)
+  - "CKB-VM semantics of VM version 2" → Infrastructure
+  - "Neuron wallet won't sync after update" → User Support (help-seeking)
+  - "Should we add on-chain KYC?" → Cryptoeconomics & Mechanism Design / stay_in_general
+  - "Spark grant announcement for wallet X" → stay_in_general (a grant announcement belongs in a DAOs & Funding subcategory; operator routes it post-classification)
 
-  ### 3. Announcements & Meta
+  ### 3. User Support
+  Someone is stuck and asking for help USING anything in the ecosystem — a wallet, a transaction, an exchange, a dapp, an account. The signal is help-seeking intent: a problem report phrased from a user's point of view, usually with an error, a question, or a plea for help. Subject matter does not matter; intent does. Two exceptions by audience: mining help → Miners Pub; a developer asking for help with code they are writing → Infrastructure or Applications & Ecosystem by layer.
+
+  Positive examples:
+  - "Wallet not syncing" / "Neuron stuck at block 0"
+  - "Can't connect Ledger Nano X with Neuron wallet"
+  - "Password error Neuron Wallet"
+  - "Neuron wallet - seed phrase" (recovery help)
+  - "Mexc exchange stuck withdrawal"
+  - "What wallet can I use in the United States for CKB?"
+  - "Portal Wallet MetaMask signing fails on Firefox"
+
+  NOT User Support:
+  - "Tutorial: how to back up your seed phrase" → Applications & Ecosystem (teaching, not asking)
+  - "Proposal: improve wallet recovery UX across the ecosystem" → Applications & Ecosystem
+  - "KD5 rig fan error, please help" → Miners Pub (miner audience)
+
+  ### 4. Announcements & Meta
   ONLY forum-level material. Official announcements from forum admins about the FORUM ITSELF. Meta-discussion about forum rules, forum moderation, forum software, forum features.
 
   CRUCIALLY NOT for DAO governance, Nervos Foundation governance, or any protocol/ecosystem governance discussion. Those go to stay_in_general.
@@ -119,11 +150,11 @@ RUBRIC = <<~PROMPT
   - "DAO V2 governance proposal discussion" → stay_in_general
   - "Nervos Foundation roadmap clarifications needed" → stay_in_general
   - "CKB ecosystem update: Q1 partnerships" → stay_in_general (or Applications & Ecosystem if it's a specific app launch)
-  - "Spark Program Q2 opens for applications" → stay_in_general (the operator will route program content into the Community Space > Spark Program subcategory)
+  - "Spark Program Q2 opens for applications" → stay_in_general (the operator will route program content into the DAOs & Funding > Spark Program subcategory)
 
   The word "governance" alone is a trap. Ask: is this governance OF THE FORUM (rules, mods, features)? → Meta. Is this governance OF THE PROTOCOL / DAO / FOUNDATION? → NOT Meta (usually stay_in_general).
 
-  ### 4. Theory & Design
+  ### 5. Cryptoeconomics & Mechanism Design
   Protocol research, tokenomics theory, consensus mechanism analysis, economic model debates, philosophical takes on blockchain design tradeoffs, academic-style write-ups, deep-dive critiques. Not "how it works" but "why it is the way it is and should it be different".
 
   Positive examples:
@@ -132,12 +163,13 @@ RUBRIC = <<~PROMPT
   - "Game-theoretic analysis of secondary issuance"
   - "Why 8 CKB minimum deposit is too high for microtransactions"
 
-  NOT Theory & Design:
-  - "RFC: Change issuance formula" → Development (concrete proposal)
-  - "How does NervosDAO work?" → Applications & Ecosystem (user-facing explainer)
+  NOT Cryptoeconomics & Mechanism Design:
+  - "RFC: Change issuance formula" → Infrastructure (concrete proposal)
+  - "How does NervosDAO work? Can't withdraw" → User Support (help-seeking)
+  - "Explainer: how NervosDAO works under the hood" → Applications & Ecosystem (user-facing tutorial)
 
-  ### 5. Miners Pub
-  Anything mining-specific: hardware (ASICs, GPUs), pools, profitability, rigs, power/heat, mining software, casual miner chat, solo-mining experiences. If a miner is talking shop, it goes here.
+  ### 6. Miners Pub
+  Anything mining-specific: hardware (ASICs, GPUs), pools, profitability, rigs, power/heat, mining software, casual miner chat, solo-mining experiences, and miners asking for help. If a miner is talking shop, it goes here.
 
   Positive examples:
   - "Goldshell CK-BOX2 review"
@@ -146,14 +178,14 @@ RUBRIC = <<~PROMPT
   - "PSU recommendations for 10 KD5 rigs"
 
   NOT Miners Pub:
-  - "NC-Max consensus mechanism critique" → Theory & Design
+  - "NC-Max consensus mechanism critique" → Cryptoeconomics & Mechanism Design
   - "Mining pool API integration for Neuron" → Applications & Ecosystem
 
-  ### 6. stay_in_general  ← DEFAULT
+  ### 7. stay_in_general  ← DEFAULT
   Legitimate default bucket. Use when:
   - Personal posts, farewells, rants, venting, opinions
   - DAO governance / protocol governance / foundation governance DISCUSSIONS (as opposed to announcements)
-  - Community programs / events / grant announcements / Spark Program / Fund DAO content that lacks a specific subcategory home (operator will route these into Community Space subcategories post-classification)
+  - Community programs / events / grant announcements / Spark Program / Fund DAO content that lacks a specific subcategory home (operator will route these into DAOs & Funding subcategories post-classification)
   - Mixed content that spans categories
   - Short threads without clear topical signal ("lol", "gm", "what do you think?")
   - Market / price / speculation chatter
@@ -173,15 +205,17 @@ RUBRIC = <<~PROMPT
 
   1. **stay_in_general is a first-class valid answer.** Do not force a topic into a category when uncertain. Prefer stay_in_general.
 
-  2. **The word "governance" is NOT a Meta signal by default.** Re-read: is this about FORUM governance (rules, mods, plugins)? Only then is it Meta. Protocol/DAO/Foundation governance → stay_in_general.
+  2. **Help-seeking intent beats subject matter.** A user asking for help with a wallet / dapp / exchange / transaction goes to User Support, NOT to the category of the thing they need help with. Exceptions: mining help → Miners Pub; a developer debugging code they are writing → Infrastructure or Applications & Ecosystem by layer.
 
-  3. **Ambiguity between two topical categories → stay_in_general.** Don't guess.
+  3. **The word "governance" is NOT a Meta signal by default.** Re-read: is this about FORUM governance (rules, mods, plugins)? Only then is it Meta. Protocol/DAO/Foundation governance → stay_in_general.
 
-  4. **Language doesn't matter.** zh/en/es content is equally valid; classify on substance.
+  4. **Ambiguity between two topical categories → stay_in_general.** Don't guess.
 
-  5. **Title vs body conflict.** Weigh the body more heavily than the title; clickbait titles mislead.
+  5. **Language doesn't matter.** zh/en/es content is equally valid; classify on substance.
 
-  6. **Implicit tests.** If a topic is a general-interest poll ("what do you all think?") with no strong topical hook, stay_in_general.
+  6. **Title vs body conflict.** Weigh the body more heavily than the title; clickbait titles mislead.
+
+  7. **Implicit tests.** If a topic is a general-interest poll ("what do you all think?") with no strong topical hook, stay_in_general.
 
   ---
 
@@ -207,10 +241,11 @@ SCHEMA = {
     suggested: {
       type: "string",
       enum: [
-        "Development",
+        "Infrastructure",
         "Applications & Ecosystem",
+        "User Support",
         "Announcements & Meta",
-        "Theory & Design",
+        "Cryptoeconomics & Mechanism Design",
         "Miners Pub",
         "stay_in_general",
       ],
