@@ -188,7 +188,7 @@ yellow ""
 yellow " The pipeline will run end-to-end (~30-60 min):"
 yellow "   - apply recategorize"
 yellow "   - extract General topics for classification"
-yellow "   - classify via Claude API (~ \$0.50)"
+yellow "   - classify via Claude API (~ \$1)"
 yellow "   - apply classify_migrate"
 yellow ""
 yellow " You can ctrl+c during dry-run/extract/classify/dry-migrate."
@@ -260,7 +260,7 @@ green "OK  $EXTRACT_COUNT topics extracted"
 # ============================================================================
 # 7. Classify (with retry up to N times)
 # ============================================================================
-step "7. Classify via Claude API (10-20 min, ~\$0.50)"
+step "7. Classify via Claude API (10-30 min, ~\$1)"
 
 CLASSIFY_LOG="$LOG_DIR/classify_run.log"
 # Don't pre-truncate as root — that creates the file with root ownership, then

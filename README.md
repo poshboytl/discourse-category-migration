@@ -2,7 +2,7 @@
 
 把按语言（中/英/西）划分的 Nervos Talk 旧分类压平成 7 个主题分类（Announcements & Meta、Infrastructure、Applications & Ecosystem、Cryptoeconomics & Mechanism Design、Miners Pub、DAOs & Funding、General）+ Archived。Applications & Ecosystem 下带一个 User Support 子分类（用户求助专区）。
 
-整条流水线由 `scripts/migrate.sh` 一站式跑完，**唯一一次需要人工介入是 apply 之前的 `Type 'yes' to proceed` 确认**。预计耗时 30-60 分钟，约 \$0.50 Claude API 成本，期间 staging 服务不需要停机。
+整条流水线由 `scripts/migrate.sh` 一站式跑完，**唯一一次需要人工介入是 apply 之前的 `Type 'yes' to proceed` 确认**。预计耗时 30-60 分钟，Claude API 成本约 \$1（全量实测 269 帖 ≈ \$0.90），期间 staging 服务不需要停机。
 
 ---
 
@@ -60,7 +60,7 @@
 
 ### Production 强烈建议先开 read-only mode
 
-迁移期间（30-60 分钟）如果有用户在某个**正在被搬走**的分类里发帖，新帖可能被遗留在 step 7 即将 destroy 的旧分类里 → 孤儿 topic。read-only 模式让用户能读不能写，规避 race。
+迁移期间（30-60 分钟）如果有用户在某个**正在被搬走**的分类里发帖，新帖可能被遗留在即将销毁的旧分类里 → 孤儿 topic。read-only 模式让用户能读不能写，规避 race。
 
 进容器后，跑迁移前先开 read-only：
 
@@ -85,11 +85,11 @@ bash /shared/discourse-category-migration/scripts/migrate.sh
 3. Step 1：部署 4 个 ruby 脚本到 `/var/www/discourse/script/`
 4. Step 2：备份 DB 到 `/shared/backups/pre_recategorize_TIMESTAMP.dump`
 5. Step 3：跑 `recategorize.rb --dry-run`，把 MOVE 计划列出来
-6. **⏸ 停下问 `Type 'yes' to proceed`**：你看一眼 MOVE 计划，输 `yes` 回车
-7. Step 4：apply recategorize（10-30 分钟，期间静默）
+6. **⏸ 停下问 `Type 'yes' to proceed`**：你看一眼 MOVE 计划——二十多行 MOVE、总计 ~2700 个 topic 的数量级对得上、没有红色 FAIL，就输 `yes` 回车
+7. Step 4：apply recategorize（数分钟到 30 分钟，期间静默，可另开 shell tail 日志）
 8. Step 5：自检 DAOs & Funding lock 和 User Support 子分类是否生效
-9. Step 6：提取 General 活帖给 LLM
-10. Step 7：classify_run（10-20 分钟，调 Claude API）
+9. Step 6：提取 General 活帖给 LLM（全量实测约 270 帖）
+10. Step 7：classify_run（10-30 分钟，调 Claude API）
 11. Step 8：migrate dry-run（验证 classifier 输出）
 12. Step 9：apply migrate（搬最后一批）
 13. Step 10：把所有 log + audit CSV 打包成 `/tmp/migration-logs-TIMESTAMP.tar.gz`
@@ -117,7 +117,7 @@ sudo -u discourse env RAILS_ENV=production bash -c "cd /var/www/discourse && bin
 
 最简单：开**无痕/隐私窗口**（Private/Incognito），用普通用户登录，再做下面验证：
 
-- [ ] `/categories` 看到 8 个顶级（7 主题 + Archived + Staff）
+- [ ] `/categories` 看到 8 个顶级 = 7 个主题分类 + Archived（**看不到 Staff 是正常的**——它对普通用户隐藏；如果你数出 9 个还包含 Staff，说明你用的是 admin 账号，换普通账号重来）
 - [ ] 进 **DAOs & Funding** 顶级：右上角**没有** "+ New Topic" 按钮
 - [ ] 进 **DAOs & Funding > Spark Program**：**有** "+ New Topic"
 - [ ] 进 **DAOs & Funding > CKB Community Fund DAO**：**有** "+ New Topic"
@@ -152,6 +152,13 @@ rm /var/www/discourse/ckb/.anthropic_key
 ```
 
 `/shared/backups/pre_recategorize_*.dump` 保留**至少 1 周**，期间如果发现问题还能回滚。一周后再清。
+
+### 4. 转告论坛管理员补两件事（脚本管不了的）
+
+迁移脚本不写分类描述（Discourse 的分类描述 = 每个分类 About 帖的首帖），所以：
+
+1. **admin UI 手填 8 个顶级分类 + User Support 的描述文案**（文案 dev 会提供），尤其是 Applications & Ecosystem 和 User Support 的边界说明
+2. **在 General 置顶一条指引**："求助请发到 Applications & Ecosystem > User Support"——迷路用户默认会奔 General 去
 
 ---
 

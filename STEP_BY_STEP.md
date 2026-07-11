@@ -140,7 +140,7 @@ grep "^  MOVE " /tmp/recat_dryrun.log
 
 **expect**：
 - 第一个 grep 输出 **0**（没有 abort、没有 missing source）
-- 第二个 grep 列出 ~20 行 MOVE 计划，加起来 ~2000 个 topic
+- 第二个 grep 列出二十多行 MOVE 计划，加起来 ~2700 个 topic（以 dry-run 输出为准，数量级对即可）
 
 如果有 abort/miss，**停下**，把 log 发回 dev。
 
@@ -217,13 +217,13 @@ tail -5 /tmp/extract.log
 wc -l /var/www/discourse/ckb/general_classify_in.jsonl
 ```
 
-**expect**：tail 显示 `Extracting N live topics`，wc 数字 = N。**记下 N**。
+**expect**：tail 显示 `Extracting N live topics`，wc 数字 = N。**记下 N**（全量库实测 N ≈ 270）。
 
 ---
 
 ## Step 7：classify via Claude API
 
-对应 migrate.sh 的 `7. Classify`。**10-20 分钟，~\$0.50**。
+对应 migrate.sh 的 `7. Classify`。**10-30 分钟，~\$1**。
 
 ```bash
 DISCOURSE_RUN "bin/rails runner script/classify_run.rb" > /tmp/classify_run.log 2>&1
